@@ -3,12 +3,12 @@
 'use server';
 
 import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import {z}from 'genkit';
 
 /**
- * @fileOverview Generates a XiaoHongShu-style blog post from a book title and 9 accompanying images.
+ * @fileOverview Generates a XiaoHongShu-style blog post from a book title, a cover image, and 9 accompanying images.
  *
- * - generateXiaoHongShuPost - A function that generates a XiaoHongShu-style blog post and images.
+ * - generateXiaoHongShuPost - A function that generates a XiaoHongShu-style blog post, a cover image, and 9 accompanying images.
  * - GenerateXiaoHongShuPostInput - The input type for the generateXiaoHongShuPost function.
  * - GenerateXiaoHongShuPostOutput - The return type for the generateXiaoHongShuPost function.
  */
@@ -22,7 +22,8 @@ export type GenerateXiaoHongShuPostInput = z.infer<typeof GenerateXiaoHongShuPos
 
 const GenerateXiaoHongShuPostOutputSchema = z.object({
   blogPost: z.string().describe('The generated XiaoHongShu-style blog post.'),
-  imageUrls: z.array(z.string()).describe('An array of URLs for 9 generated images that complement the blog post. These are data URIs.'),
+  coverImageUrl: z.string().describe('A URL for a generated high-class cover image (3:4 aspect ratio). This is a data URI.'),
+  imageUrls: z.array(z.string()).describe('An array of URLs for 9 generated accompanying images (3:4 aspect ratio) that complement the blog post. These are data URIs.'),
 });
 
 export type GenerateXiaoHongShuPostOutput = z.infer<typeof GenerateXiaoHongShuPostOutputSchema>;
@@ -79,6 +80,27 @@ To craft a high-quality post that resonates with the XiaoHongShu audience, pleas
 `,
 });
 
+const generateImage = async (promptText: string, placeholderSize: string = "300x400"): Promise<string> => {
+  try {
+    const { media } = await ai.generate({
+      model: 'googleai/gemini-2.0-flash-exp',
+      prompt: promptText,
+      config: {
+        responseModalities: ['TEXT', 'IMAGE'],
+      },
+    });
+    if (media && media.url) {
+      return media.url; // This should be a data URI
+    }
+    console.warn('Image generation resulted in no media URL for prompt:', promptText);
+    return `https://placehold.co/${placeholderSize}.png?text=Image+Generation+Failed`;
+  } catch (e) {
+    console.error('Image generation failed for one image:', e);
+    return `https://placehold.co/${placeholderSize}.png?text=Error+Generating`; // Return a placeholder on error
+  }
+};
+
+
 const generateXiaoHongShuPostFlow = ai.defineFlow(
   {
     name: 'generateXiaoHongShuPostFlow',
@@ -90,33 +112,19 @@ const generateXiaoHongShuPostFlow = ai.defineFlow(
     const { output: textPromptOutput } = await generateXiaoHongShuPostPrompt(input);
     const blogPost = textPromptOutput!.blogPost;
 
-    // 2. Generate 9 images
-    const imagePrompts = Array(9).fill(null).map((_, index) => 
-      `Generate a realistic and visually appealing image suitable for a Xiaohongshu (Little Red Book) post. The post is about the book "${input.bookTitle}". The image should be high-quality and engaging, perhaps depicting a scene, concept, or mood related to the book's themes that would resonate with a Xiaohongshu audience. Avoid text overlays on the image. This is image ${index + 1} of 9.`
+    // 2. Generate Cover Image
+    const coverImagePrompt = `Generate a sophisticated and high-class vertical cover image (3:4 aspect ratio) for a Xiaohongshu (Little Red Book) post about the book "${input.bookTitle}". The image should be visually striking and suitable as a main promotional graphic. Avoid text overlays.`;
+    const coverImageUrlPromise = generateImage(coverImagePrompt, "300x400");
+
+    // 3. Generate 9 accompanying images
+    const accompanyingImagePrompts = Array(9).fill(null).map((_, index) =>
+      `Generate a realistic and visually appealing vertical image (3:4 aspect ratio) suitable for a Xiaohongshu (Little Red Book) post. The post is about the book "${input.bookTitle}". The image should be high-quality and engaging, perhaps depicting a scene, concept, or mood related to the book's themes that would resonate with a Xiaohongshu audience. Avoid text overlays on the image. This is image ${index + 1} of 9.`
     );
 
-    const imageGenerationPromises = imagePrompts.map(async (promptText) => {
-      try {
-        const { media } = await ai.generate({
-          model: 'googleai/gemini-2.0-flash-exp', // Ensure this model is correct for image generation
-          prompt: promptText,
-          config: {
-            responseModalities: ['TEXT', 'IMAGE'], // MUST provide both TEXT and IMAGE
-          },
-        });
-        if (media && media.url) {
-          return media.url; // This should be a data URI
-        }
-        console.warn('Image generation resulted in no media URL for prompt:', promptText);
-        return `https://placehold.co/400x400.png?text=Image+Generation+Failed`;
-      } catch (e) {
-        console.error('Image generation failed for one image:', e);
-        return `https://placehold.co/400x400.png?text=Error+Generating`; // Return a placeholder on error
-      }
-    });
+    const accompanyingImagePromises = accompanyingImagePrompts.map(promptText => generateImage(promptText, "300x400"));
+    
+    const [coverImageUrl, ...imageUrls] = await Promise.all([coverImageUrlPromise, ...accompanyingImagePromises]);
 
-    const imageUrls = await Promise.all(imageGenerationPromises);
-
-    return { blogPost, imageUrls };
+    return { blogPost, coverImageUrl, imageUrls };
   }
 );

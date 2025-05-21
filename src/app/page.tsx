@@ -29,7 +29,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, BookText, Sparkles, Image as ImageIcon } from "lucide-react";
+import { Loader2, BookText, Sparkles, Image as ImageIcon, Download } from "lucide-react";
 
 const formSchema = z.object({
   bookTitle: z.string().min(2, {
@@ -81,6 +81,8 @@ export default function HomePage() {
     }
   }
 
+  const slugify = (text: string) => text.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, '');
+
   return (
     <div className="flex flex-col items-center min-h-screen bg-background p-4 md:p-8 selection:bg-accent/50 selection:text-accent-foreground">
       <header className="mb-10 text-center">
@@ -98,7 +100,7 @@ export default function HomePage() {
           <CardHeader>
             <CardTitle className="text-2xl font-semibold text-center">输入书籍信息</CardTitle>
             <CardDescription className="text-center text-muted-foreground">
-              提供书名，让我们的 AI 为您量身打造小红书风格的帖子和配图。
+              提供书名，让我们的 AI 为您量身打造小红书风格的帖子、封面和配图。
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -148,7 +150,7 @@ export default function HomePage() {
           <Card className="mt-8 shadow-xl rounded-lg">
             <CardContent className="p-6 text-center">
               <Loader2 className="mx-auto h-12 w-12 animate-spin text-accent mb-4" />
-              <p className="text-muted-foreground text-lg">AI 正在努力创作中，请稍候... (这可能需要一点时间)</p>
+              <p className="text-muted-foreground text-lg">AI 正在努力创作中，请稍候... (这可能需要一些时间，尤其是在生成图片时)</p>
             </CardContent>
           </Card>
         )}
@@ -180,38 +182,84 @@ export default function HomePage() {
             </CardContent>
           </Card>
         )}
+        
+        {generatedPost && generatedPost.coverImageUrl && (
+          <Card className="mt-8 shadow-xl rounded-lg">
+            <CardHeader>
+              <CardTitle className="text-2xl font-semibold text-center flex items-center justify-center">
+                <ImageIcon className="mr-2 h-6 w-6 text-accent" />
+                建议封面图 (3:4)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex justify-center">
+              <a
+                href={generatedPost.coverImageUrl}
+                download={`redbookify-cover-${slugify(form.getValues("bookTitle") || "image")}.png`}
+                className="block group relative aspect-[3/4] w-full max-w-xs sm:max-w-sm md:max-w-md rounded-md overflow-hidden border border-border shadow-sm hover:shadow-lg transition-shadow"
+                title="Download Cover Image"
+              >
+                <Image
+                  src={generatedPost.coverImageUrl}
+                  alt={`Generated cover image for ${form.getValues("bookTitle")}`}
+                  fill
+                  sizes="(max-width: 640px) 80vw, (max-width: 768px) 50vw, 33vw"
+                  style={{ objectFit: 'cover' }}
+                  className="transform transition-transform duration-300 group-hover:scale-105"
+                  data-ai-hint="book cover"
+                  onError={(e) => {
+                    e.currentTarget.src = 'https://placehold.co/300x400.png?text=Load+Error';
+                  }}
+                />
+                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 flex items-center justify-center transition-opacity duration-300">
+                  <Download className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                </div>
+              </a>
+            </CardContent>
+             <CardFooter>
+                <CardDescription className="text-xs text-center w-full">点击图片下载封面。AI 生成的图片仅供参考。</CardDescription>
+            </CardFooter>
+          </Card>
+        )}
 
         {generatedPost && generatedPost.imageUrls && generatedPost.imageUrls.length > 0 && (
           <Card className="mt-8 shadow-xl rounded-lg">
             <CardHeader>
               <CardTitle className="text-2xl font-semibold text-center flex items-center justify-center">
                 <ImageIcon className="mr-2 h-6 w-6 text-accent" />
-                建议配图
+                建议配图 (3:4)
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                 {generatedPost.imageUrls.map((url, index) => (
-                  <div key={index} className="aspect-square relative rounded-md overflow-hidden border border-border shadow-sm hover:shadow-lg transition-shadow">
+                  <a
+                    key={index}
+                    href={url}
+                    download={`redbookify-image-${index + 1}-${slugify(form.getValues("bookTitle") || "image")}.png`}
+                    className="block group relative aspect-[3/4] rounded-md overflow-hidden border border-border shadow-sm hover:shadow-lg transition-shadow"
+                    title={`Download Image ${index + 1}`}
+                  >
                     <Image
-                      src={url} // Data URIs from Genkit
+                      src={url} 
                       alt={`Generated image ${index + 1} for ${form.getValues("bookTitle")}`}
                       fill
-                      sizes="(max-width: 640px) 50vw, 33vw"
+                      sizes="(max-width: 640px) 45vw, (max-width: 768px) 30vw, 22vw"
                       style={{ objectFit: 'cover' }}
-                      className="transform transition-transform duration-300 hover:scale-105"
-                      data-ai-hint="book theme visual" // Generic hint
+                      className="transform transition-transform duration-300 group-hover:scale-105"
+                      data-ai-hint="book theme vertical"
                       onError={(e) => {
-                        // In case Next/Image has an issue with a specific data URI that wasn't caught as an error during generation
-                        e.currentTarget.src = 'https://placehold.co/400x400.png?text=Load+Error';
+                        e.currentTarget.src = 'https://placehold.co/300x400.png?text=Load+Error';
                       }}
                     />
-                  </div>
+                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 flex items-center justify-center transition-opacity duration-300">
+                      <Download className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                    </div>
+                  </a>
                 ))}
               </div>
             </CardContent>
             <CardFooter>
-                <CardDescription className="text-xs text-center w-full">AI 生成的图片仅供参考，您可以挑选使用或自行创作。</CardDescription>
+                <CardDescription className="text-xs text-center w-full">点击图片下载。AI 生成的图片仅供参考，您可以挑选使用或自行创作。</CardDescription>
             </CardFooter>
           </Card>
         )}
@@ -219,7 +267,9 @@ export default function HomePage() {
 
       <footer className="mt-12 text-center text-muted-foreground text-xs">
         <p>&copy; {new Date().getFullYear()} RedBookify. AI 驱动创作。</p>
+        <p className="mt-1 text-xs text-muted-foreground/80">请注意：AI 生成的内容（包括文字和图片）可能需要修改和调整以达到最佳效果。直接在图片上生成特定文字（如书摘）对当前AI模型仍有挑战，建议图片以主题和氛围为主。</p>
       </footer>
     </div>
   );
 }
+
