@@ -6,9 +6,9 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 /**
- * @fileOverview Generates a XiaoHongShu-style blog post from a book title.
+ * @fileOverview Generates a XiaoHongShu-style blog post from a book title and 9 accompanying images.
  *
- * - generateXiaoHongShuPost - A function that generates a XiaoHongShu-style blog post.
+ * - generateXiaoHongShuPost - A function that generates a XiaoHongShu-style blog post and images.
  * - GenerateXiaoHongShuPostInput - The input type for the generateXiaoHongShuPost function.
  * - GenerateXiaoHongShuPostOutput - The return type for the generateXiaoHongShuPost function.
  */
@@ -22,6 +22,7 @@ export type GenerateXiaoHongShuPostInput = z.infer<typeof GenerateXiaoHongShuPos
 
 const GenerateXiaoHongShuPostOutputSchema = z.object({
   blogPost: z.string().describe('The generated XiaoHongShu-style blog post.'),
+  imageUrls: z.array(z.string()).describe('An array of URLs for 9 generated images that complement the blog post. These are data URIs.'),
 });
 
 export type GenerateXiaoHongShuPostOutput = z.infer<typeof GenerateXiaoHongShuPostOutputSchema>;
@@ -35,7 +36,7 @@ export async function generateXiaoHongShuPost(
 const generateXiaoHongShuPostPrompt = ai.definePrompt({
   name: 'generateXiaoHongShuPostPrompt',
   input: {schema: GenerateXiaoHongShuPostInputSchema},
-  output: {schema: GenerateXiaoHongShuPostOutputSchema},
+  output: {schema: z.object({ blogPost: GenerateXiaoHongShuPostOutputSchema.shape.blogPost })}, // Only blogPost for this prompt
   prompt: `You are an expert social media content creator, specializing in the XiaoHongShu (Little Red Book) platform.
 Your primary goal is to generate an engaging and insightful blog post about the book titled "{{{bookTitle}}}".
 If available, use the following scraped content for additional context:
@@ -84,8 +85,38 @@ const generateXiaoHongShuPostFlow = ai.defineFlow(
     inputSchema: GenerateXiaoHongShuPostInputSchema,
     outputSchema: GenerateXiaoHongShuPostOutputSchema,
   },
-  async input => {
-    const {output} = await generateXiaoHongShuPostPrompt(input);
-    return output!;
+  async (input) => {
+    // 1. Generate the blog post
+    const { output: textPromptOutput } = await generateXiaoHongShuPostPrompt(input);
+    const blogPost = textPromptOutput!.blogPost;
+
+    // 2. Generate 9 images
+    const imagePrompts = Array(9).fill(null).map((_, index) => 
+      `Generate a realistic and visually appealing image suitable for a Xiaohongshu (Little Red Book) post. The post is about the book "${input.bookTitle}". The image should be high-quality and engaging, perhaps depicting a scene, concept, or mood related to the book's themes that would resonate with a Xiaohongshu audience. Avoid text overlays on the image. This is image ${index + 1} of 9.`
+    );
+
+    const imageGenerationPromises = imagePrompts.map(async (promptText) => {
+      try {
+        const { media } = await ai.generate({
+          model: 'googleai/gemini-2.0-flash-exp', // Ensure this model is correct for image generation
+          prompt: promptText,
+          config: {
+            responseModalities: ['TEXT', 'IMAGE'], // MUST provide both TEXT and IMAGE
+          },
+        });
+        if (media && media.url) {
+          return media.url; // This should be a data URI
+        }
+        console.warn('Image generation resulted in no media URL for prompt:', promptText);
+        return `https://placehold.co/400x400.png?text=Image+Generation+Failed`;
+      } catch (e) {
+        console.error('Image generation failed for one image:', e);
+        return `https://placehold.co/400x400.png?text=Error+Generating`; // Return a placeholder on error
+      }
+    });
+
+    const imageUrls = await Promise.all(imageGenerationPromises);
+
+    return { blogPost, imageUrls };
   }
 );

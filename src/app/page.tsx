@@ -1,6 +1,8 @@
+
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -12,6 +14,7 @@ import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -26,7 +29,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, BookText, Sparkles } from "lucide-react";
+import { Loader2, BookText, Sparkles, Image as ImageIcon } from "lucide-react";
 
 const formSchema = z.object({
   bookTitle: z.string().min(2, {
@@ -52,7 +55,6 @@ export default function HomePage() {
     setError(null);
 
     try {
-      // Placeholder for scraped content. In a real application, this would involve actual web scraping.
       const placeholderScrapedContent = `关于 "${values.bookTitle}" 的一些通用占位符内容。
 读者发现这本书引人入胜，因为它情节错综复杂，角色 relatable。
 网络上的许多讨论都围绕着其出乎意料的转折和所探讨的深刻主题展开。
@@ -68,10 +70,10 @@ export default function HomePage() {
     } catch (e) {
       console.error(e);
       const errorMessage = e instanceof Error ? e.message : "发生未知错误。";
-      setError(`生成帖子失败: ${errorMessage}`);
+      setError(`生成内容失败: ${errorMessage}`);
       toast({
         title: "错误",
-        description: `生成帖子失败: ${errorMessage}`,
+        description: `生成内容失败: ${errorMessage}`,
         variant: "destructive",
       });
     } finally {
@@ -87,7 +89,7 @@ export default function HomePage() {
           RedBookify
         </h1>
         <p className="text-muted-foreground mt-4 text-lg">
-          输入书名，AI 助您创作引人入胜的小红书笔记！
+          输入书名，AI 助您创作引人入胜的小红书笔记和配图！
         </p>
       </header>
 
@@ -96,7 +98,7 @@ export default function HomePage() {
           <CardHeader>
             <CardTitle className="text-2xl font-semibold text-center">输入书籍信息</CardTitle>
             <CardDescription className="text-center text-muted-foreground">
-              提供书名，让我们的 AI 为您量身打造小红书风格的帖子。
+              提供书名，让我们的 AI 为您量身打造小红书风格的帖子和配图。
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -133,7 +135,7 @@ export default function HomePage() {
                   ) : (
                     <>
                       <Sparkles className="mr-2 h-5 w-5" />
-                      生成笔记
+                      生成图文笔记
                     </>
                   )}
                 </Button>
@@ -146,7 +148,7 @@ export default function HomePage() {
           <Card className="mt-8 shadow-xl rounded-lg">
             <CardContent className="p-6 text-center">
               <Loader2 className="mx-auto h-12 w-12 animate-spin text-accent mb-4" />
-              <p className="text-muted-foreground text-lg">AI 正在努力创作中，请稍候...</p>
+              <p className="text-muted-foreground text-lg">AI 正在努力创作中，请稍候... (这可能需要一点时间)</p>
             </CardContent>
           </Card>
         )}
@@ -162,13 +164,13 @@ export default function HomePage() {
           </Card>
         )}
 
-        {generatedPost && (
+        {generatedPost && generatedPost.blogPost && (
           <Card className="mt-8 shadow-xl rounded-lg">
             <CardHeader>
               <CardTitle className="text-2xl font-semibold text-center">您的小红书笔记</CardTitle>
             </CardHeader>
             <CardContent>
-              <ScrollArea className="h-[400px] w-full rounded-md border border-border p-4 bg-secondary/50">
+              <ScrollArea className="h-[300px] md:h-[400px] w-full rounded-md border border-border p-4 bg-secondary/50">
                 <div
                   className="whitespace-pre-wrap text-foreground text-sm md:text-base leading-relaxed"
                 >
@@ -176,6 +178,41 @@ export default function HomePage() {
                 </div>
               </ScrollArea>
             </CardContent>
+          </Card>
+        )}
+
+        {generatedPost && generatedPost.imageUrls && generatedPost.imageUrls.length > 0 && (
+          <Card className="mt-8 shadow-xl rounded-lg">
+            <CardHeader>
+              <CardTitle className="text-2xl font-semibold text-center flex items-center justify-center">
+                <ImageIcon className="mr-2 h-6 w-6 text-accent" />
+                建议配图
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                {generatedPost.imageUrls.map((url, index) => (
+                  <div key={index} className="aspect-square relative rounded-md overflow-hidden border border-border shadow-sm hover:shadow-lg transition-shadow">
+                    <Image
+                      src={url} // Data URIs from Genkit
+                      alt={`Generated image ${index + 1} for ${form.getValues("bookTitle")}`}
+                      fill
+                      sizes="(max-width: 640px) 50vw, 33vw"
+                      style={{ objectFit: 'cover' }}
+                      className="transform transition-transform duration-300 hover:scale-105"
+                      data-ai-hint="book theme visual" // Generic hint
+                      onError={(e) => {
+                        // In case Next/Image has an issue with a specific data URI that wasn't caught as an error during generation
+                        e.currentTarget.src = 'https://placehold.co/400x400.png?text=Load+Error';
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+            <CardFooter>
+                <CardDescription className="text-xs text-center w-full">AI 生成的图片仅供参考，您可以挑选使用或自行创作。</CardDescription>
+            </CardFooter>
           </Card>
         )}
       </main>
