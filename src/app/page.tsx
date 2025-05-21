@@ -39,6 +39,7 @@ const formSchema = z.object({
 
 export default function HomePage() {
   const [isLoading, setIsLoading] = useState(false);
+  const [isBatchDownloading, setIsBatchDownloading] = useState(false);
   const [generatedPost, setGeneratedPost] = useState<GenerateXiaoHongShuPostOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,6 +84,41 @@ export default function HomePage() {
 
   const slugify = (text: string) => text.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, '');
 
+  const triggerDownload = (url: string, filename: string) => {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const handleBatchDownload = async () => {
+    if (!generatedPost || !generatedPost.imageUrls || generatedPost.imageUrls.length === 0) {
+      toast({ title: "没有图片可供下载", variant: "destructive" });
+      return;
+    }
+    setIsBatchDownloading(true);
+    toast({ title: "开始批量下载", description: "请注意浏览器可能会提示多次或阻止部分下载。" });
+
+    const bookTitleSlug = slugify(form.getValues("bookTitle") || "image");
+
+    for (let i = 0; i < generatedPost.imageUrls.length; i++) {
+      const url = generatedPost.imageUrls[i];
+      // Check if the URL is a placeholder or an actual data URI from generation
+      if (url && (url.startsWith('data:image') || url.includes('placehold.co'))) {
+         triggerDownload(url, `redbookify-image-${i + 1}-${bookTitleSlug}.png`);
+        // Add a small delay to potentially help browsers manage multiple downloads
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } else {
+        console.warn(`Skipping download for invalid or missing URL: ${url}`);
+      }
+    }
+    setIsBatchDownloading(false);
+    toast({ title: "批量下载处理完成", description: "如果部分图片未下载，请尝试单独下载。" });
+  };
+
+
   return (
     <div className="flex flex-col items-center min-h-screen bg-background p-4 md:p-8 selection:bg-accent/50 selection:text-accent-foreground">
       <header className="mb-10 text-center">
@@ -96,7 +132,7 @@ export default function HomePage() {
       </header>
 
       <main className="w-full max-w-2xl">
-        <Card className="shadow-xl rounded-lg">
+        <Card className="shadow-xl rounded-lg mb-8">
           <CardHeader>
             <CardTitle className="text-2xl font-semibold text-center">输入书籍信息</CardTitle>
             <CardDescription className="text-center text-muted-foreground">
@@ -126,7 +162,7 @@ export default function HomePage() {
                 />
                 <Button
                   type="submit"
-                  disabled={isLoading}
+                  disabled={isLoading || isBatchDownloading}
                   className="w-full py-5 text-md rounded-md bg-accent text-accent-foreground hover:bg-accent/90 focus:ring-accent"
                 >
                   {isLoading ? (
@@ -147,7 +183,7 @@ export default function HomePage() {
         </Card>
 
         {isLoading && !generatedPost && !error && (
-          <Card className="mt-8 shadow-xl rounded-lg">
+          <Card className="mt-8 shadow-xl rounded-lg mb-8">
             <CardContent className="p-6 text-center">
               <Loader2 className="mx-auto h-12 w-12 animate-spin text-accent mb-4" />
               <p className="text-muted-foreground text-lg">AI 正在努力创作中，请稍候... (这可能需要一些时间，尤其是在生成图片时)</p>
@@ -156,7 +192,7 @@ export default function HomePage() {
         )}
 
         {error && (
-          <Card className="mt-8 shadow-xl rounded-lg bg-destructive text-destructive-foreground">
+          <Card className="mt-8 shadow-xl rounded-lg bg-destructive text-destructive-foreground mb-8">
             <CardHeader>
               <CardTitle className="text-center">生成失败</CardTitle>
             </CardHeader>
@@ -167,7 +203,7 @@ export default function HomePage() {
         )}
 
         {generatedPost && generatedPost.blogPost && (
-          <Card className="mt-8 shadow-xl rounded-lg">
+          <Card className="mt-8 shadow-xl rounded-lg mb-8">
             <CardHeader>
               <CardTitle className="text-2xl font-semibold text-center">您的小红书笔记</CardTitle>
             </CardHeader>
@@ -184,7 +220,7 @@ export default function HomePage() {
         )}
         
         {generatedPost && generatedPost.coverImageUrl && (
-          <Card className="mt-8 shadow-xl rounded-lg">
+          <Card className="mt-8 shadow-xl rounded-lg mb-8">
             <CardHeader>
               <CardTitle className="text-2xl font-semibold text-center flex items-center justify-center">
                 <ImageIcon className="mr-2 h-6 w-6 text-accent" />
@@ -222,12 +258,27 @@ export default function HomePage() {
         )}
 
         {generatedPost && generatedPost.imageUrls && generatedPost.imageUrls.length > 0 && (
-          <Card className="mt-8 shadow-xl rounded-lg">
+          <Card className="mt-8 shadow-xl rounded-lg mb-8">
             <CardHeader>
-              <CardTitle className="text-2xl font-semibold text-center flex items-center justify-center">
-                <ImageIcon className="mr-2 h-6 w-6 text-accent" />
-                建议配图 (3:4)
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-2xl font-semibold text-center flex items-center">
+                  <ImageIcon className="mr-2 h-6 w-6 text-accent" />
+                  建议配图 (3:4)
+                </CardTitle>
+                <Button
+                  onClick={handleBatchDownload}
+                  disabled={isBatchDownloading || isLoading}
+                  variant="outline"
+                  size="sm"
+                >
+                  {isBatchDownloading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="mr-2 h-4 w-4" />
+                  )}
+                  批量下载
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -259,7 +310,7 @@ export default function HomePage() {
               </div>
             </CardContent>
             <CardFooter>
-                <CardDescription className="text-xs text-center w-full">点击图片下载。AI 生成的图片仅供参考，您可以挑选使用或自行创作。</CardDescription>
+                <CardDescription className="text-xs text-center w-full">点击图片单独下载。批量下载可能受浏览器限制。AI 生成图片仅供参考。</CardDescription>
             </CardFooter>
           </Card>
         )}
