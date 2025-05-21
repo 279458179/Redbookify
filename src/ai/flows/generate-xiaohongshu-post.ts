@@ -1,3 +1,4 @@
+
 // This is an AI-powered function that generates a XiaoHongShu-style blog post based on a given book title.
 
 'use server';
@@ -22,7 +23,7 @@ export type GenerateXiaoHongShuPostInput = z.infer<typeof GenerateXiaoHongShuPos
 
 const GenerateXiaoHongShuPostOutputSchema = z.object({
   blogPost: z.string().describe('The generated XiaoHongShu-style blog post. It should be plain text with emojis and hashtags, without Markdown bolding.'),
-  coverImageUrl: z.string().describe('A URL for a generated high-class cover image (3:4 aspect ratio). This is a data URI.'),
+  coverImageUrl: z.string().describe('A URL for a generated high-class cover image (3:4 aspect ratio) for the book, potentially featuring the title. This is a data URI.'),
   imageUrls: z.array(z.string()).describe('An array of URLs for 9 generated accompanying images (3:4 aspect ratio) that complement the blog post. These are data URIs.'),
 });
 
@@ -99,7 +100,7 @@ const generateImage = async (promptText: string, placeholderSize: string = "300x
       return media.url; // This should be a data URI
     }
     console.warn('Image generation resulted in no media URL for prompt:', promptText);
-    return `https://placehold.co/${placeholderSize}.png?text=Image+Generation+Failed`;
+    return `https://placehold.co/${placeholderSize}.png?text=Image+Gen+Failed`;
   } catch (e) {
     console.error('Image generation failed for one image:', e);
     return `https://placehold.co/${placeholderSize}.png?text=Error+Generating`; // Return a placeholder on error
@@ -119,12 +120,12 @@ const generateXiaoHongShuPostFlow = ai.defineFlow(
     const blogPost = textPromptOutput!.blogPost;
 
     // 2. Generate Cover Image
-    const coverImagePrompt = `Generate a sophisticated and high-class vertical cover image (3:4 aspect ratio) for a Xiaohongshu (Little Red Book) post about the book "${input.bookTitle}". The image should be visually striking and suitable as a main promotional graphic. Avoid text overlays.`;
+    const coverImagePrompt = `Generate a sophisticated and high-class vertical cover image (3:4 aspect ratio) for a Xiaohongshu (Little Red Book) post about the book "${input.bookTitle}". The image should be visually striking and suitable as a main promotional graphic. It could look like a book cover or a promotional image for the book, potentially featuring the book title "${input.bookTitle}" in a prominent and stylish way.`;
     const coverImageUrlPromise = generateImage(coverImagePrompt, "300x400");
 
     // 3. Generate 9 accompanying images
     const accompanyingImagePrompts = Array(9).fill(null).map((_, index) =>
-      `Generate a realistic and visually appealing vertical image (3:4 aspect ratio) suitable for a Xiaohongshu (Little Red Book) post. The post is about the book "${input.bookTitle}". The image should be high-quality and engaging, perhaps depicting a scene, concept, or mood related to the book's themes that would resonate with a Xiaohongshu audience. Avoid text overlays on the image. This is image ${index + 1} of 9.`
+      `Generate a realistic and visually appealing vertical image (3:4 aspect ratio) suitable for a Xiaohongshu (Little Red Book) post. The post is about the book "${input.bookTitle}". The image should be high-quality and engaging, perhaps depicting a scene, concept, or mood related to the book's themes that would resonate with a Xiaohongshu audience. Avoid text overlays on this image. This is image ${index + 1} of 9.`
     );
 
     const accompanyingImagePromises = accompanyingImagePrompts.map(promptText => generateImage(promptText, "300x400"));
@@ -135,3 +136,4 @@ const generateXiaoHongShuPostFlow = ai.defineFlow(
   }
 );
 
+    
