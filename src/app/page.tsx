@@ -1,11 +1,12 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { format } from 'date-fns';
 import { generateXiaoHongShuPost } from "@/ai/flows/generate-xiaohongshu-post";
 import type { GenerateXiaoHongShuPostOutput } from "@/ai/flows/generate-xiaohongshu-post";
 
@@ -19,6 +20,27 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Form,
   FormControl,
   FormField,
@@ -29,7 +51,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, BookText, Sparkles, Image as ImageIcon, Download } from "lucide-react";
+import { Loader2, BookText, Sparkles, Image as ImageIcon, Download, History, Trash2, Eye } from "lucide-react";
 
 const formSchema = z.object({
   bookTitle: z.string().min(2, {
@@ -37,11 +59,25 @@ const formSchema = z.object({
   }),
 });
 
+interface HistoryEntry {
+  id: string;
+  bookTitle: string;
+  generatedContent: GenerateXiaoHongShuPostOutput;
+  timestamp: number;
+}
+
+const MAX_HISTORY_ITEMS = 10;
+const LOCAL_STORAGE_KEY = "redbookifyHistory";
+
 export default function HomePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isBatchDownloading, setIsBatchDownloading] = useState(false);
   const [generatedPost, setGeneratedPost] = useState<GenerateXiaoHongShuPostOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
+  
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [isClearHistoryAlertOpen, setIsClearHistoryAlertOpen] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -49,6 +85,63 @@ export default function HomePage() {
       bookTitle: "",
     },
   });
+
+  // Load history from localStorage on mount
+  useEffect(() => {
+    try {
+      const storedHistory = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (storedHistory) {
+        setHistory(JSON.parse(storedHistory));
+      }
+    } catch (e) {
+      console.error("Failed to load history from localStorage:", e);
+      // Optionally clear corrupted history
+      // localStorage.removeItem(LOCAL_STORAGE_KEY);
+    }
+  }, []);
+
+  const saveToHistory = (bookTitle: string, content: GenerateXiaoHongShuPostOutput) => {
+    const newEntry: HistoryEntry = {
+      id: Date.now().toString(),
+      bookTitle,
+      generatedContent: content,
+      timestamp: Date.now(),
+    };
+    setHistory(prevHistory => {
+      const updatedHistory = [newEntry, ...prevHistory].slice(0, MAX_HISTORY_ITEMS);
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedHistory));
+      } catch (e) {
+        console.error("Failed to save history to localStorage:", e);
+        toast({
+          title: "历史记录保存失败",
+          description: "浏览器存储空间可能已满。",
+          variant: "destructive",
+        });
+      }
+      return updatedHistory;
+    });
+  };
+
+  const handleClearHistory = () => {
+    setHistory([]);
+    try {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+    } catch (e) {
+      console.error("Failed to clear history from localStorage:", e);
+    }
+    setIsClearHistoryAlertOpen(false);
+    toast({ title: "历史记录已清空" });
+  };
+
+  const loadHistoryEntry = (entry: HistoryEntry) => {
+    form.setValue("bookTitle", entry.bookTitle);
+    setGeneratedPost(entry.generatedContent);
+    setError(null); // Clear any previous errors
+    setIsHistoryModalOpen(false); // Close history modal
+    // Scroll to top to see the loaded content
+    window.scrollTo({ top: 0, behavior: 'smooth' }); 
+  };
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
@@ -68,6 +161,7 @@ export default function HomePage() {
         scrapedContent: placeholderScrapedContent,
       });
       setGeneratedPost(result);
+      saveToHistory(values.bookTitle, result); // Save to history on success
     } catch (e) {
       console.error(e);
       const errorMessage = e instanceof Error ? e.message : "发生未知错误。";
@@ -105,10 +199,8 @@ export default function HomePage() {
 
     for (let i = 0; i < generatedPost.imageUrls.length; i++) {
       const url = generatedPost.imageUrls[i];
-      // Check if the URL is a placeholder or an actual data URI from generation
       if (url && (url.startsWith('data:image') || url.includes('placehold.co'))) {
          triggerDownload(url, `redbookify-image-${i + 1}-${bookTitleSlug}.png`);
-        // Add a small delay to potentially help browsers manage multiple downloads
         await new Promise(resolve => setTimeout(resolve, 500));
       } else {
         console.warn(`Skipping download for invalid or missing URL: ${url}`);
@@ -121,11 +213,79 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col items-center min-h-screen bg-background p-4 md:p-8 selection:bg-accent/50 selection:text-accent-foreground">
-      <header className="mb-10 text-center">
-        <h1 className="text-4xl font-bold text-primary-foreground bg-primary py-3 px-6 rounded-lg shadow-md inline-flex items-center">
-          <BookText className="mr-3 h-8 w-8" />
-          RedBookify
-        </h1>
+      <header className="w-full max-w-2xl mb-10 text-center">
+        <div className="flex justify-center items-center relative">
+          <h1 className="text-4xl font-bold text-primary-foreground bg-primary py-3 px-6 rounded-lg shadow-md inline-flex items-center">
+            <BookText className="mr-3 h-8 w-8" />
+            RedBookify
+          </h1>
+          <Dialog open={isHistoryModalOpen} onOpenChange={setIsHistoryModalOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="icon" className="absolute right-0 top-1/2 -translate-y-1/2 ml-4" title="查看历史记录">
+                <History className="h-5 w-5" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[525px]">
+              <DialogHeader>
+                <DialogTitle>生成历史</DialogTitle>
+                <DialogDescription>
+                  查看您最近生成的笔记。点击条目加载到主页面。最多保存 {MAX_HISTORY_ITEMS} 条记录。
+                </DialogDescription>
+              </DialogHeader>
+              {history.length > 0 ? (
+                <ScrollArea className="h-[400px] pr-4">
+                  <div className="space-y-3">
+                    {history.map((entry) => (
+                      <Card key={entry.id} className="overflow-hidden">
+                        <CardHeader className="p-4">
+                          <CardTitle className="text-lg">{entry.bookTitle}</CardTitle>
+                          <CardDescription className="text-xs">
+                            {format(new Date(entry.timestamp), 'yyyy-MM-dd HH:mm:ss')}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardFooter className="p-4 pt-0 flex justify-end">
+                           <Button variant="outline" size="sm" onClick={() => loadHistoryEntry(entry)}>
+                            <Eye className="mr-2 h-4 w-4" />
+                            查看
+                          </Button>
+                        </CardFooter>
+                      </Card>
+                    ))}
+                  </div>
+                </ScrollArea>
+              ) : (
+                <p className="text-muted-foreground text-center py-8">暂无历史记录。</p>
+              )}
+              <DialogFooter className="mt-4 sm:justify-between">
+                {history.length > 0 && (
+                  <AlertDialog open={isClearHistoryAlertOpen} onOpenChange={setIsClearHistoryAlertOpen}>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="sm">
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        清空历史
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>确定要清空所有历史记录吗？</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          此操作无法撤销，所有已保存的生成记录将被永久删除。
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>取消</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleClearHistory}>确定清空</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+                <DialogClose asChild>
+                  <Button variant="outline" size="sm">关闭</Button>
+                </DialogClose>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
         <p className="text-muted-foreground mt-4 text-lg">
           输入书名，AI 助您创作引人入胜的小红书笔记和配图！
         </p>
